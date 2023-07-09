@@ -1,0 +1,199 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon May 22 23:43:08 2023
+@author: Carlos Eduardo Bibow Corrêa
+"""
+import math
+import CoolProp.CoolProp as CP
+import sympy as sp
+import numpy as np
+import math
+import pandas as pd
+fluid = 'Water'
+air = 'Air'
+d = 2E-3 #dcanal
+t = 4E-3 #distancia entre canais
+w = 0.5E-3 # dist entre camadas
+n = 12 #n canais por camada
+N = 7 #n camadas
+L = t*n;
+A = (2*N)*d + (2*N + 1)*w;
+B = t*n;
+Ast = math.pi * (d/2)**2
+Am = d * math.pi * L
+Atot = Am * n * N
+V = A * B * L
+Vch = Ast * L * n * N
+Poro = Vch/V
+Afree = Poro * A * B
+beta = 2*Atot / V
+k = 0.23 #NYLON
+#DADOS DE ENTRADA
+Thin = 56.4472
+Tcin = 23.4365
+phin = 1.2266
+pcin = 1.3899
+mhtotal = 0.2108
+mctotal = 0.0360
+ncanal = 84
+n = 7
+est = 0.5
+Thout = Thin
+Tcout = Tcin
+15
+error = 0.5 # Initial error value
+tolerance = 1E-5
+while error > tolerance:
+
+ mhin = mhtotal / ncanal
+ mcin = mctotal / ncanal
+
+ Thmed = (Thout + Thin) / 2
+ Tcmed = (Tcout + Tcin) / 2
+
+ cp1h = CP.PropsSI('C', 'T', Thmed + 273, 'P', phin * 1e5, fluid)
+ mu1h = CP.PropsSI('V', 'T', Thmed + 273, 'P', phin * 1e5, fluid)
+ rho1h = CP.PropsSI('D', 'T', Thmed + 273, 'P', phin * 1e5, fluid)
+ k1h = CP.PropsSI('L', 'T', Thmed + 273, 'P', phin * 1e5, fluid)
+
+ cp1c = CP.PropsSI('C', 'T', Tcmed + 273, 'P', pcin * 1e5, air)
+ mu1c = CP.PropsSI('V', 'T', Tcmed + 273, 'P', pcin * 1e5, air)
+ rho1c = CP.PropsSI('D', 'T', Tcmed + 273, 'P', pcin * 1e5, air)
+ k1c = CP.PropsSI('L', 'T', Tcmed + 273, 'P', pcin * 1e5, air)
+
+ Cc = cp1c * mctotal
+ Ch = cp1h * mhtotal
+
+ if Cc < Ch:
+ Cmin = Cc
+ Cmax = Ch
+ else:
+ Cmin = Ch
+ Cmax = Cc
+
+ Cr = Cmin / Cmax
+
+
+ Thout = Thin - est * (Cmin * (Thin - Tcin)) / Ch
+ Tcout = Tcin + est * (Cmin * (Thin - Tcin)) / Cc
+
+ Prh = (mu1h * cp1h) / k1h
+ Prc = (mu1c * cp1c) / k1c
+
+ REc = (d * mctotal) / (mu1c * Afree)
+ REh = (d * mhtotal) / (mu1h * Afree)
+ REL = 2300
+ RET = 10000
+
+ lthh = (L/d)/(REc*Prc)
+ lthc = (L/d)/(REh*Prh)
+ fh = (1 / 4) * (1.8 * math.log(REh) - 1.5) ** (-2)
+ fc = (1 / 4) * (1.8 * math.log(REc) - 1.5) ** (-2)
+
+ NUlam = ((4.354**3) + (0.6**3) + ((1.953 * ((Prh*REh*(d/L))**(1/3)) -
+0.6)**3) + 0.924 * ((Prh)**(1/3)) * ((REh*(d/L))**(1/2)))**(1/3)
+ NUturb = ((fh / 8) * (REh - 1000) * Prh) / (1 + 12.7 * ((fh / 8) **
+0.5) * ((Prh) ** (2 / 3)) - 1)
+
+16
+ #Para o ramal quente
+ if (REh <= REL):
+ NUh = ((4.354**3) + (0.6**3) + ((1.953 * ((Prh*REh*(d/L))**(1/3)) -
+0.6)**3) + 0.924 * ((Prh)**(1/3)) * ((REh*(d/L))**(1/2)))**(1/3)
+ elif (REh > REL) and (REh < RET):
+ NUh = (((NUlam)**6) + ((NUturb)**6))**(1/6)
+ else:
+ NUh = ((fh / 8) * (REh - 1000) * Prh) / (1 + 12.7 * ((fh / 8) **
+0.5) * ((Prh) ** (2 / 3)) - 1)
+
+ #Para o ramal frio
+ if (REc <= REL):
+ NUc = ((4.354**3) + (0.6**3) + ((1.953 * ((Prc*REc*(d/L))**(1/3)) -
+0.6)**3) + 0.924 * ((Prc)**(1/3)) * ((REc*(d/L))**(1/2)))**(1/3)
+ elif (REc > REL) and (REc < RET):
+ NUc = (((NUlam)**6) + ((NUturb)**6))**(1/6)
+ else:
+ NUc = ((fh / 8) * (REc - 1000) * Prc) / (1 + 12.7 * ((fc / 8) **
+0.5) * ((Prc) ** (2 / 3)) - 1)
+
+ hh = (k1h * NUh)/d
+ hc = (k1c * NUc)/d
+ #---------------------------- APROXIMAÇÃO DE ALETAS
+ Ah = d
+ Ac = d
+
+ Palh = 2 * ( L + ((t - Ah)/2))
+ Atralh = L * ((t - Ah)/2)
+ Palc = Palh = 2 * ( B + ((t - Ac)/2))
+ Atralc = B * ((t - Ac)/2)
+
+ Mhot = (Palh * hh)/(k * Atralh)
+ Mcold = (Palc * hc)/(k * Atralc)
+
+ Etah = math.tanh((Mhot * Ah/2)/(Mhot *Ah/2))
+ Etac = math.tanh((Mcold * Ac/2)/(Mcold *Ac/2))
+
+ Aletahvc = 0.5 * Ah * L
+ Aletacvc = 0.5 * Ac * B
+ Awethvc = d * math.pi * L/2
+ Awetcvc = d * math.pi * B/2
+ Awall = B * L * ((2*n) + 1)
+
+ etah = 1 - ((2 * Aletahvc/Awethvc) * (1 - Etah))
+ etac = 1 - ((2 * Aletacvc/Awetcvc) * (1 - Etac))
+
+ Rhconv = 1 / (Atot * hh * etah)
+ Rcconv = 1 / (Atot * hc * etac)
+ Rcond = w/(k * Awall)
+
+ Rtot = Rhconv + Rcconv + Rcond
+ UA = 1/Rtot
+
+ NUT = UA/Cmin
+ Cr = Cmin/Cmax
+
+ cp2h = CP.PropsSI('C', 'T', Thout + 273, 'P', phin * 1e5, fluid)
+17
+ mu2h = CP.PropsSI('V', 'T', Thout + 273, 'P', phin * 1e5, fluid)
+ rho2h = CP.PropsSI('D', 'T', Thout + 273, 'P', phin * 1e5, fluid)
+ k2h = CP.PropsSI('L', 'T', Thout + 273, 'P', phin * 1e5, fluid)
+
+ cp2c = CP.PropsSI('C', 'T', Tcout + 273, 'P', pcin * 1e5, air)
+ mu2c = CP.PropsSI('V', 'T', Tcout + 273, 'P', pcin * 1e5, air)
+ rho2c = CP.PropsSI('D', 'T', Tcout + 273, 'P', pcin * 1e5, air)
+ k2c = CP.PropsSI('L', 'T', Tcout + 273, 'P', pcin * 1e5, air)
+
+ epslon = 1 - math.exp((1/Cr)*(NUT**0.22)*(math.exp(-Cr*(NUT**0.78))-
+1));
+
+ error = abs(epslon - est)
+
+ est = epslon
+
+ q = epslon * Cmin * (Thin - Tcin)
+ qc = mctotal * cp1c * (Tcin - Tcout)
+ qh = mctotal * cp1h * (Thin - Thout)
+# -------------- QUEDA DE PRESSÃO
+Gh = mhin / Atot/2
+Gc = mctotal / Atot/2
+rhomh = ((1/rho1h)+(1/rho2h))/2
+rhomc = ((1/rho1c)+(1/rho2c))/2
+if (REh > 2300):
+ Keh = 0.75
+ Kch = 0.47
+elif (REh<2300):
+ Keh = 0.69
+ Kch = 0.99
+
+if (REc > 2300):
+ Kec = 0.75
+ Kcc = 0.47
+elif (REc<2300):
+ Kec = 0.69
+ Kcc = 0.99
+
+#Ramal quente
+dPCoreh = (Gh**2 / 2*rho1h) * ((4*fh * L/d * rhomh + ((rho1h/rho2h) - 1) +
+(1 - Poro**2) - (rho1h/rho2h)*(1 - Poro**2) + Kch + Keh*(rho1h/rho2h)))
+dPCorec = (Gc**2 / 2*rho1c) * ((4*fc * L/d * rhomc + ((rho1c/rho2c) - 1) +
+(1 - Poro**2) - (rho1c/rho2c)*(1 - Poro**2) + Kcc + Kec*(rho1c/rho2c)))
